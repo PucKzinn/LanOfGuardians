@@ -24,4 +24,17 @@ public class PlayerNetwork : NetworkBehaviour
     {
         if (isServer) ServerSaveNow();
     }
+
+    [Command]
+    public void CmdSendChat(ChatMessage message)
+    {
+        if (string.IsNullOrWhiteSpace(message.text)) return;
+        RpcReceiveChat(message);
+    }
+
+    [ClientRpc]
+    void RpcReceiveChat(ChatMessage message)
+    {
+        ChatUI.Instance?.Receive(message);
+    }
 }
