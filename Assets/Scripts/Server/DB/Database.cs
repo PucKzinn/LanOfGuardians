@@ -17,6 +17,8 @@ public static class Database
                 _conn = new SQLiteConnection(dbPath, SQLiteOpenFlags.ReadWrite | SQLiteOpenFlags.Create);
                 _conn.CreateTable<Account>();
                 _conn.CreateTable<Character>();
+                _conn.CreateTable<Item>();
+                _conn.CreateTable<Inventory>();
             }
             return _conn;
         }
@@ -26,6 +28,7 @@ public static class Database
     {
         // força inicialização e criação das tabelas
         var _ = Conn;
+        InventoryService.Seed();
         Debug.Log($"[DB] Path: {dbPath}");
     }
 }
@@ -50,4 +53,20 @@ public class Character
     public float Y { get; set; }
     public float Z { get; set; }
     public string LastLogin { get; set; }
+}
+
+[Table("items")]
+public class Item
+{
+    [PrimaryKey, AutoIncrement] public int Id { get; set; }
+    [Unique] public string Name { get; set; }
+}
+
+[Table("inventory")]
+public class Inventory
+{
+    [PrimaryKey, AutoIncrement] public int Id { get; set; }
+    public int CharacterId { get; set; }
+    public int ItemId { get; set; }
+    public int Quantity { get; set; }
 }
