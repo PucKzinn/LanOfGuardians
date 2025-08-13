@@ -1,3 +1,4 @@
+using System;
 using Mirror;
 using UnityEngine;
 
@@ -20,6 +21,8 @@ public class SimpleAuthenticator : NetworkAuthenticator
         public bool success;
         public string message;
     }
+
+    public static event Action<AuthResponse> AuthResponseReceived;
 
     // ===== SERVER =====
     public override void OnStartServer()
@@ -84,6 +87,8 @@ public class SimpleAuthenticator : NetworkAuthenticator
 
     void OnAuthResponse(AuthResponse msg)
     {
+        AuthResponseReceived?.Invoke(msg);
+
         if (msg.success)
         {
             Debug.Log("[Auth] Cliente autenticado (recebeu OK)");

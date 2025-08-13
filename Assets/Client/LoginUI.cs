@@ -31,6 +31,9 @@ public class LoginUI : MonoBehaviour
         ShowStatus("Pronto.");
     }
 
+    void OnEnable() => SimpleAuthenticator.AuthResponseReceived += OnAuthResponse;
+    void OnDisable() => SimpleAuthenticator.AuthResponseReceived -= OnAuthResponse;
+
     // dentro de LoginUI.cs
     public void Connect()
     {
@@ -104,4 +107,14 @@ public class LoginUI : MonoBehaviour
         // também manda pro console
         Debug.Log($"[LoginUI] {msg}");
     }
+
+    void OnAuthResponse(SimpleAuthenticator.AuthResponse msg) =>
+        ShowStatus(MapAuthMessage(msg.message));
+
+    static string MapAuthMessage(string serverMessage) => serverMessage switch
+    {
+        "Credenciais inválidas." => "Credenciais inválidas",
+        "OK" => "Login realizado com sucesso.",
+        _ => serverMessage
+    };
 }
