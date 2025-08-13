@@ -1,5 +1,6 @@
 using Mirror;
 using UnityEngine;
+using System;
 
 public class SimpleAuthenticator : NetworkAuthenticator
 {
@@ -20,6 +21,8 @@ public class SimpleAuthenticator : NetworkAuthenticator
         public bool success;
         public string message;
     }
+
+    public static event Action<string> ClientAuthFailed;
 
     // ===== SERVER =====
     public override void OnStartServer()
@@ -92,6 +95,7 @@ public class SimpleAuthenticator : NetworkAuthenticator
         else
         {
             Debug.LogWarning("[Auth] Falha de autenticação no cliente: " + msg.message);
+            ClientAuthFailed?.Invoke(msg.message);
             NetworkClient.Disconnect();
         }
     }
