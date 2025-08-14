@@ -34,6 +34,17 @@ public class LoginUI : MonoBehaviour
     void OnEnable() => SimpleAuthenticator.AuthResponseReceived += OnAuthResponse;
     void OnDisable() => SimpleAuthenticator.AuthResponseReceived -= OnAuthResponse;
 
+    void OnEnable()
+    {
+        SimpleAuthenticator.ClientAuthFailed += OnAuthFailed;
+    }
+
+    void OnDisable()
+    {
+        SimpleAuthenticator.ClientAuthFailed -= OnAuthFailed;
+    }
+
+
     // dentro de LoginUI.cs
     public void Connect()
     {
@@ -86,6 +97,18 @@ public class LoginUI : MonoBehaviour
     void OnClientDisconnected()
     {
         ShowStatus("Desconectado do servidor.");
+    }
+
+    void OnAuthFailed(string serverMessage)
+    {
+        ShowStatus(MapAuthMessage(serverMessage));
+    }
+
+    string MapAuthMessage(string msg)
+    {
+        if (string.IsNullOrWhiteSpace(msg)) return "Falha ao autenticar.";
+        if (msg.Contains("Credenciais inválidas")) return "Credenciais inválidas.";
+        return msg;
     }
 
     // -------- UI helpers --------
