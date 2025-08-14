@@ -1,5 +1,7 @@
+using System;
 using Mirror;
 using UnityEngine;
+using System;
 
 public class SimpleAuthenticator : NetworkAuthenticator
 {
@@ -20,6 +22,12 @@ public class SimpleAuthenticator : NetworkAuthenticator
         public bool success;
         public string message;
     }
+
+
+    public static event Action<AuthResponse> AuthResponseReceived;
+
+    public static event Action<string> ClientAuthFailed;
+
 
     // ===== SERVER =====
     public override void OnStartServer()
@@ -84,6 +92,8 @@ public class SimpleAuthenticator : NetworkAuthenticator
 
     void OnAuthResponse(AuthResponse msg)
     {
+        AuthResponseReceived?.Invoke(msg);
+
         if (msg.success)
         {
             Debug.Log("[Auth] Cliente autenticado (recebeu OK)");
@@ -92,6 +102,7 @@ public class SimpleAuthenticator : NetworkAuthenticator
         else
         {
             Debug.LogWarning("[Auth] Falha de autenticação no cliente: " + msg.message);
+            ClientAuthFailed?.Invoke(msg.message);
             NetworkClient.Disconnect();
         }
     }
