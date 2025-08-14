@@ -1,29 +1,22 @@
 using UnityEngine;
 using UnityEngine.UI;
 using Mirror;
-
-// Se usar TextMeshPro, descomente a linha abaixo e troque os campos no Inspector
 using TMPro;
 
 public class LoginUI : MonoBehaviour
 {
-    [Header("Campos de Login")]
-    // Use EITHER InputField OR TMP_InputField (comente um ou outro)
-    // public InputField userField;
-    // public InputField passField;
+    [Header("Campos de Login (TMP)")]
     public TMP_InputField userFieldTMP;
     public TMP_InputField passFieldTMP;
 
     [Header("Opções")]
     public Toggle createIfMissingToggle;
-    public InputField addressField;           // opcional (IP/Host), deixe vazio para usar o padrão do NetworkManager
-    public Text statusText;                   // opcional (mensagens de status na UI)
+    public InputField addressField;   // opcional (IP/Host)
+    public Text statusText;           // opcional (UI de status)
 
     [Header("Referências")]
-    public NetworkManager manager;            // arraste o seu NetworkManager (PlayerSpawner)
-    public SimpleAuthenticator authenticator; // arraste o SimpleAuthenticator do objeto NetworkManager
-           
-    float lastClickTime;    // anti-spam básico
+    public NetworkManager manager;            // arraste o NetworkManager (PlayerSpawner)
+    public SimpleAuthenticator authenticator; // arraste o SimpleAuthenticator do mesmo objeto
 
     void Awake()
     {
@@ -31,72 +24,52 @@ public class LoginUI : MonoBehaviour
         ShowStatus("Pronto.");
     }
 
-    void OnEnable() => SimpleAuthenticator.AuthResponseReceived += OnAuthResponse;
-    void OnDisable() => SimpleAuthenticator.AuthResponseReceived -= OnAuthResponse;
-
     void OnEnable()
     {
-        SimpleAuthenticator.ClientAuthFailed += OnAuthFailed;
+        // Assina os dois eventos uma única vez
+        SimpleAuthenticator.AuthResponseReceived += OnAuthResponse;
+        SimpleAuthenticator.ClientAuthFailed     += OnAuthFailed;
     }
 
     void OnDisable()
     {
-        SimpleAuthenticator.ClientAuthFailed -= OnAuthFailed;
+        // Desassina para evitar leaks
+        SimpleAuthenticator.AuthResponseReceived -= OnAuthResponse;
+        SimpleAuthenticator.ClientAuthFailed     -= OnAuthFailed;
     }
 
-
-    // dentro de LoginUI.cs
     public void Connect()
     {
         if (manager == null) manager = NetworkManager.singleton;
-
-        string username = GetUser();
-        string password = GetPass();
-        bool createIfMissing = createIfMissingToggle != null && createIfMissingToggle.isOn;
-
-        if (string.IsNullOrWhiteSpace(username)) { ShowStatus("Usuário vazio."); return; }
-        if (string.IsNullOrWhiteSpace(password)) { ShowStatus("Senha vazia."); return; }
-
-        if (addressField != null && !string.IsNullOrWhiteSpace(addressField.text))
-            manager.networkAddress = addressField.text.Trim();
-
-        // passa as credenciais para o AUTHENTICATOR
-        authenticator.cachedUsername = username;
-        authenticator.cachedPassword = password;
-        authenticator.cachedCreate   = createIfMissing;
-
-        ShowStatus($"Conectando em {manager.networkAddress}...");
-        // o SimpleAuthenticator vai enviar LoginMessage no OnClientAuthenticate()
-        manager.StartClient(); // (em vez de NetworkClient.Connect + OnConnectedEvent)
-    }
-
-
-    // -------- envio do login --------
-    string pendingUsername, pendingPassword;
-    bool pendingCreate;
-
-    void OnClientConnectedSendLogin()
-    {
         if (authenticator == null)
         {
             ShowStatus("Authenticator não atribuído no NetworkManager.");
             return;
         }
 
-        var msg = new SimpleAuthenticator.LoginMessage
-        {
-            username = pendingUsername,
-            password = pendingPassword,
-            createIfMissing = pendingCreate
-        };
+        string username = GetUser();
+        string password = GetPass();
+        bool createIfMissing = createIfMissingToggle != null && createIfMissingToggle.isOn;
 
-        NetworkClient.Send(msg);
-        ShowStatus("Login enviado.");
+        if (string.IsNullOrWhiteSpace(username)) { ShowStatus("Usuário vazio."); return; }
+        if (string.IsNullOrWhiteSpace(password)) { ShowStatus("Senha vazia.");   return; }
+
+        if (addressField != null && !string.IsNullOrWhiteSpace(addressField.text))
+            manager.networkAddress = addressField.text.Trim();
+
+        // Entrega as credenciais ao Authenticator; ele envia no OnClientAuthenticate()
+        authenticator.cachedUsername = username;
+        authenticator.cachedPassword = password;
+        authenticator.cachedCreate   = createIfMissing;
+
+        ShowStatus($"Conectando em {manager.networkAddress}...");
+        manager.StartClient();
     }
 
-    void OnClientDisconnected()
+    // ---- Handlers de autenticação (eventos do SimpleAuthenticator) ----
+    void OnAuthResponse(SimpleAuthenticator.AuthResponse msg)
     {
-        ShowStatus("Desconectado do servidor.");
+        ShowStatus(MapAuthMessage(msg.message));
     }
 
     void OnAuthFailed(string serverMessage)
@@ -104,40 +77,21 @@ public class LoginUI : MonoBehaviour
         ShowStatus(MapAuthMessage(serverMessage));
     }
 
-    string MapAuthMessage(string msg)
-    {
-        if (string.IsNullOrWhiteSpace(msg)) return "Falha ao autenticar.";
-        if (msg.Contains("Credenciais inválidas")) return "Credenciais inválidas.";
-        return msg;
-    }
-
-    // -------- UI helpers --------
-    string GetUser()
-    {
-        // se usar TMP, troque para userFieldTMP.text
-       return userFieldTMP != null ? userFieldTMP.text.Trim() : "";  /* : userFieldTMP.text.Trim(); */
-    }
-
-    string GetPass()
-    {
-        // se usar TMP, troque para passFieldTMP.text
-        return passFieldTMP != null ? passFieldTMP.text.Trim() : ""; /* : passFieldTMP.text */
-    }
+    // ---- Helpers de UI ----
+    string GetUser() => userFieldTMP != null ? userFieldTMP.text.Trim() : "";
+    string GetPass() => passFieldTMP != null ? passFieldTMP.text        : "";
 
     void ShowStatus(string msg)
     {
         if (statusText != null) statusText.text = msg;
-        // também manda pro console
         Debug.Log($"[LoginUI] {msg}");
     }
 
-    void OnAuthResponse(SimpleAuthenticator.AuthResponse msg) =>
-        ShowStatus(MapAuthMessage(msg.message));
-
-    static string MapAuthMessage(string serverMessage) => serverMessage switch
+    string MapAuthMessage(string serverMessage)
     {
-        "Credenciais inválidas." => "Credenciais inválidas",
-        "OK" => "Login realizado com sucesso.",
-        _ => serverMessage
-    };
+        if (string.IsNullOrWhiteSpace(serverMessage)) return "Falha ao autenticar.";
+        if (serverMessage == "OK") return "Login realizado com sucesso.";
+        if (serverMessage.Contains("Credenciais inválidas")) return "Credenciais inválidas.";
+        return serverMessage;
+    }
 }

@@ -1,71 +1,124 @@
-using System;
+#if UNITY_SERVER || UNITY_EDITOR
 using System.Collections.Generic;
-using System.Linq;
-using UnityEngine;
+using System.Linq;                // <- para FirstOrDefault()
+using SQLite4Unity3d;
 
+// Serviço de inventário: cria tabelas, seed, e expõe Add/Remove/List.
+// Executa no servidor (ou no Editor para testes locais).
 public static class InventoryService
 {
-    public class ItemEntry
+    // ---- modelos de tabela ----
+    [Table("items")]
+    private class ItemRow
     {
-        public int ItemId { get; set; }
-        public string Name { get; set; }
-        public int Quantity { get; set; }
+        [PrimaryKey] public int item_id { get; set; }
+        public string name { get; set; }
+        public int stackable { get; set; }   // 0/1
+        public int max_stack { get; set; }   // se stackable=1, limite por pilha
     }
 
-    public static void Seed()
+    [Table("inventory")]
+    private class InvRow
     {
-        // cria itens básicos se a tabela estiver vazia
-        if (Database.Conn.Table<Item>().Count() != 0) return;
-        Debug.unityLogger?.Log(LogType.Log, "[Inventory] seeding items");
-        Database.Conn.Insert(new Item { Name = "Potion" });
-        Database.Conn.Insert(new Item { Name = "Sword" });
+        [PrimaryKey, AutoIncrement] public int id { get; set; }
+        public int char_id { get; set; }
+        public int item_id { get; set; }
+        public int qty { get; set; }
+    }
+
+    // ---- tipo usado para retorno legível ----
+    public class ItemEntry
+    {
+        public int ItemId;
+        public string Name;
+        public int Quantity;
+    }
+
+    static SQLiteConnection Conn => Database.Conn; // ajuste se sua conexão tiver outro nome
+
+    public static void Init()
+    {
+        Conn.CreateTable<ItemRow>();
+        Conn.CreateTable<InvRow>();
+        SeedIfEmpty();
+    }
+
+    static void SeedIfEmpty()
+    {
+        // só cria itens se a tabela estiver vazia
+        var count = Conn.Table<ItemRow>().Count();
+        if (count > 0) return;
+
+        // Ex.: 1 = Poção (empilhável), 2 = Espada (não empilhável)
+        Conn.InsertAll(new[]
+        {
+            new ItemRow { item_id = 1, name = "Poção", stackable = 1, max_stack = 99 },
+            new ItemRow { item_id = 2, name = "Espada", stackable = 0, max_stack = 1 },
+        });
+    }
+
+    public static List<ItemEntry> ListItems(int charId)
+    {
+        // join simples para listar nome e quantidade
+        string sql = @"
+            SELECT i.item_id as ItemId, i.name as Name, IFNULL(v.qty, 0) as Quantity
+            FROM items i
+            LEFT JOIN inventory v ON v.item_id = i.item_id AND v.char_id = ?
+            WHERE IFNULL(v.qty,0) > 0
+            ORDER BY i.item_id";
+        return Conn.Query<ItemEntry>(sql, charId);
     }
 
     public static void AddItem(int charId, int itemId, int qty)
     {
-        if (qty <= 0) throw new ArgumentOutOfRangeException(nameof(qty));
-        var inv = Database.Conn.Table<Inventory>()
-            .FirstOrDefault(i => i.CharacterId == charId && i.ItemId == itemId);
-        if (inv == null)
+        if (qty <= 0) return;
+
+        var def = Conn.Find<ItemRow>(itemId);
+        if (def == null) return;
+
+        // existe entry?
+        var existing = Conn.Query<InvRow>(
+            "SELECT * FROM inventory WHERE char_id=? AND item_id=? LIMIT 1",
+            charId, itemId
+        ).FirstOrDefault();
+
+        int newQty = qty + (existing?.qty ?? 0);
+
+        // respeita stack se definido
+        if (def.stackable == 1 && def.max_stack > 0 && newQty > def.max_stack)
+            newQty = def.max_stack;
+
+        if (existing == null)
         {
-            inv = new Inventory { CharacterId = charId, ItemId = itemId, Quantity = qty };
-            Database.Conn.Insert(inv);
+            Conn.Insert(new InvRow { char_id = charId, item_id = itemId, qty = newQty });
         }
         else
         {
-            inv.Quantity += qty;
-            Database.Conn.Update(inv);
+            existing.qty = newQty;
+            Conn.Update(existing);
         }
     }
 
     public static void RemoveItem(int charId, int itemId, int qty)
     {
-        if (qty <= 0) throw new ArgumentOutOfRangeException(nameof(qty));
-        var inv = Database.Conn.Table<Inventory>()
-            .FirstOrDefault(i => i.CharacterId == charId && i.ItemId == itemId);
-        if (inv == null) return;
-        inv.Quantity -= qty;
-        if (inv.Quantity <= 0)
-            Database.Conn.Delete(inv);
-        else
-            Database.Conn.Update(inv);
-    }
+        if (qty <= 0) return;
 
-    public static List<ItemEntry> ListItems(int charId)
-    {
-        var items = Database.Conn.Table<Item>().ToList();
-        var result = new List<ItemEntry>();
-        foreach (var item in items)
+        var existing = Conn.Query<InvRow>(
+            "SELECT * FROM inventory WHERE char_id=? AND item_id=? LIMIT 1",
+            charId, itemId
+        ).FirstOrDefault();
+
+        if (existing == null) return;
+
+        existing.qty -= qty;
+        if (existing.qty <= 0)
         {
-            var inv = Database.Conn.Table<Inventory>()
-                .FirstOrDefault(i => i.CharacterId == charId && i.ItemId == item.Id);
-            result.Add(new ItemEntry
-            {
-                ItemId = item.Id,
-                Name = item.Name,
-                Quantity = inv?.Quantity ?? 0
-            });
+            Conn.Execute("DELETE FROM inventory WHERE id=?", existing.id);
         }
-        return result;
+        else
+        {
+            Conn.Update(existing);
+        }
     }
 }
+#endif

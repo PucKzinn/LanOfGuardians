@@ -1,7 +1,6 @@
 using System;
 using Mirror;
 using UnityEngine;
-using System;
 
 public class SimpleAuthenticator : NetworkAuthenticator
 {

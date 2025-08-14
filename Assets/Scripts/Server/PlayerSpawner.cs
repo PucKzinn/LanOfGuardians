@@ -16,21 +16,13 @@ public class PlayerSpawner : NetworkManager
         }
 
         GameObject player = Instantiate(playerPrefab, pos, Quaternion.identity);
-        var net = player.GetComponent<PlayerNetwork>();
-        if (net != null) net.Init(auth?.charId ?? -1);
+        var pn = player.GetComponent<PlayerNetwork>();
+        if (pn != null) pn.Init(auth?.charId ?? -1);
 
         NetworkServer.AddPlayerForConnection(conn, player);
-    }
 
-    public override void OnServerDisconnect(NetworkConnectionToClient conn)
-    {
-        // Em algumas versões, conn.identity pode vir null dependendo da ordem de teardown.
-        if (conn != null && conn.identity != null)
-        {
-            var net = conn.identity.GetComponent<PlayerNetwork>();
-            if (net != null) net.ServerSaveNow();
-        }
-
-        base.OnServerDisconnect(conn);
-    }
+    #if UNITY_SERVER || UNITY_EDITOR
+        pn?.ServerPushInventoryNow();   // ⇦ só compila no servidor/editor
+    #endif
+}
 }

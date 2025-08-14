@@ -1,0 +1,17 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 184130de32b8a9c47ab005010615494e, type: 3}
+  m_Name: Class_Default
+  m_EditorClassIdentifier: 
+  classId: default
+  animator: {fileID: 9100000, guid: 089743c070f700e4194d9079e5298aaf, type: 2}
+  defaultIdleSprite: {fileID: 577850404, guid: ba8a5d06ebca6524189ad5734b818f5e, type: 3}
