@@ -1,6 +1,13 @@
 using Mirror;
 using UnityEngine;
 
+
+public class AutoSaveSystem : MonoBehaviour
+{
+    const float SaveInterval = 30f;
+
+    [ServerCallback]
+    void Start() => InvokeRepeating(nameof(SaveAllPlayers), SaveInterval, SaveInterval);
 /// <summary>
 /// Periodically saves all connected players' positions.
 /// </summary>
@@ -22,6 +29,13 @@ public class AutoSaveSystem : MonoBehaviour
     [Server]
     void SaveAllPlayers()
     {
+
+        foreach (var conn in NetworkServer.connections.Values)
+        {
+            var player = conn.identity != null ? conn.identity.GetComponent<PlayerNetwork>() : null;
+            if (player != null)
+                player.ServerSaveNow();
+
         if (!NetworkServer.active) return;
 
         foreach (var kvp in NetworkServer.connections)
