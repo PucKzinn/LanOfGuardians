@@ -1,3 +1,5 @@
+using System;
+using System.Globalization;
 using UnityEngine;
 using UnityEngine.UI;
 using Mirror;
@@ -69,12 +71,24 @@ public class LoginUI : MonoBehaviour
     // ---- Handlers de autenticação (eventos do SimpleAuthenticator) ----
     void OnAuthResponse(SimpleAuthenticator.AuthResponse msg)
     {
-        ShowStatus(MapAuthMessage(msg.message));
+        // Se veio bloqueio, mostra hora local
+        if (msg.code == (int)AuthCode.Locked && !string.IsNullOrEmpty(msg.lockedUntilUtc))
+        {
+            DateTime utc;
+            if (DateTime.TryParse(msg.lockedUntilUtc, null, DateTimeStyles.AdjustToUniversal, out utc))
+            {
+                var local = utc.ToLocalTime();
+                ShowStatus($"Conta bloqueada até {local:HH:mm}.");
+                return;
+            }
+        }
+
+        ShowStatus(MapAuthMessage(msg.message, msg.code));
     }
 
     void OnAuthFailed(string serverMessage)
     {
-        ShowStatus(MapAuthMessage(serverMessage));
+        ShowStatus(MapAuthMessage(serverMessage, (int)AuthCode.Error));
     }
 
     // ---- Helpers de UI ----
@@ -87,10 +101,12 @@ public class LoginUI : MonoBehaviour
         Debug.Log($"[LoginUI] {msg}");
     }
 
-    string MapAuthMessage(string serverMessage)
+    string MapAuthMessage(string serverMessage, int code)
     {
         if (string.IsNullOrWhiteSpace(serverMessage)) return "Falha ao autenticar.";
-        if (serverMessage == "OK") return "Login realizado com sucesso.";
+        if (code == (int)AuthCode.OK || serverMessage == "OK") return "Login realizado com sucesso.";
+        if (code == (int)AuthCode.RateLimited) return "Muitas tentativas. Aguarde um pouco e tente novamente.";
+        if (code == (int)AuthCode.Locked) return "Conta bloqueada temporariamente.";
         if (serverMessage.Contains("Credenciais inválidas")) return "Credenciais inválidas.";
         return serverMessage;
     }

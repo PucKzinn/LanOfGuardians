@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Mirror;
 using UnityEngine;
 
@@ -20,13 +21,35 @@ public class SimpleAuthenticator : NetworkAuthenticator
     {
         public bool success;
         public string message;
+        public int code;              // AuthCode (int)
+        public string lockedUntilUtc; // quando bloqueado
     }
 
-
     public static event Action<AuthResponse> AuthResponseReceived;
-
     public static event Action<string> ClientAuthFailed;
 
+    // ====== RATE LIMITING SIMPLES POR IP ======
+    static readonly Dictionary<string, List<DateTime>> _ipHits = new Dictionary<string, List<DateTime>>();
+    const int WINDOW_SECONDS = 60;
+    const int MAX_ATTEMPTS_PER_WINDOW = 20;
+
+    bool ExceededRateLimit(string address)
+    {
+        if (string.IsNullOrEmpty(address)) address = "unknown";
+        List<DateTime> hits;
+        if (!_ipHits.TryGetValue(address, out hits))
+        {
+            hits = new List<DateTime>();
+            _ipHits[address] = hits;
+        }
+        DateTime now = DateTime.UtcNow;
+        DateTime cutoff = now.AddSeconds(-WINDOW_SECONDS);
+        // limpa hits antigos
+        hits.RemoveAll(t => t < cutoff);
+        // registra
+        hits.Add(now);
+        return hits.Count > MAX_ATTEMPTS_PER_WINDOW;
+    }
 
     // ===== SERVER =====
     public override void OnStartServer()
@@ -41,28 +64,48 @@ public class SimpleAuthenticator : NetworkAuthenticator
 
     void OnLoginServer(NetworkConnectionToClient conn, LoginMessage msg)
     {
-        Debug.Log($"[Auth] Login recebido (conn={conn.connectionId}) user={msg.username}");
+        string ip = conn.address;
+        Debug.Log($"[Auth] Login recebido (conn={conn.connectionId} ip={ip}) user={msg.username}");
 
-        int accountId = AccountService.ValidateLogin(msg.username, msg.password);
-        if (accountId < 0 && msg.createIfMissing)
+        if (ExceededRateLimit(ip))
         {
-            if (AccountService.CreateAccount(msg.username, msg.password))
-                accountId = AccountService.ValidateLogin(msg.username, msg.password);
-        }
-
-        if (accountId < 0)
-        {
-            Debug.LogWarning($"[Auth] Falha de login para user={msg.username}");
-            conn.Send(new AuthResponse { success = false, message = "Credenciais inválidas." });
+            var rl = new AuthResponse { success = false, message = "Muitas tentativas. Aguarde um pouco.", code = (int)AuthCode.RateLimited };
+            conn.Send(rl);
             conn.Disconnect();
             return;
         }
 
+        // Valida credenciais
+        var res = AccountService.ValidateLoginDetailed(msg.username, msg.password);
+
+        // Caso não exista e o cliente pedir para criar, tenta criar e validar novamente
+        if (res.Code == AuthCode.Invalid && msg.createIfMissing)
+        {
+            if (AccountService.CreateAccount(msg.username, msg.password))
+                res = AccountService.ValidateLoginDetailed(msg.username, msg.password);
+        }
+
+        if (res.Code != AuthCode.OK)
+        {
+            var fail = new AuthResponse {
+                success = false,
+                message = res.Message,
+                code = (int)res.Code,
+                lockedUntilUtc = res.LockedUntilUtc
+            };
+            Debug.LogWarning($"[Auth] Falha de login para user={msg.username} -> {res.Code}");
+            conn.Send(fail);
+            conn.Disconnect();
+            return;
+        }
+
+        int accountId = res.AccountId;
         int charId = CharacterService.EnsureCharacter(accountId);
         conn.authenticationData = new AuthData { accountId = accountId, charId = charId };
 
         // envia OK para o cliente e autentica no servidor
-        conn.Send(new AuthResponse { success = true, message = "OK" });
+        var ok = new AuthResponse { success = true, message = "OK", code = (int)AuthCode.OK };
+        conn.Send(ok);
         OnServerAuthenticated.Invoke(conn);
     }
 
