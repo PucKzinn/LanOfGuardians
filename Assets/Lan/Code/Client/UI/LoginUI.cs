@@ -1,5 +1,4 @@
-using System;
-using System.Globalization;
+// Caminho: Assets/Lan/Code/Client/UI/LoginUI.cs
 using UnityEngine;
 using UnityEngine.UI;
 using Mirror;
@@ -13,12 +12,13 @@ public class LoginUI : MonoBehaviour
 
     [Header("Opções")]
     public Toggle createIfMissingToggle;
+    public Toggle hostModeToggle;     // ⇦ NOVO
     public InputField addressField;   // opcional (IP/Host)
     public Text statusText;           // opcional (UI de status)
 
     [Header("Referências")]
-    public NetworkManager manager;            // arraste o NetworkManager (PlayerSpawner)
-    public SimpleAuthenticator authenticator; // arraste o SimpleAuthenticator do mesmo objeto
+    public NetworkManager manager;
+    public SimpleAuthenticator authenticator;
 
     void Awake()
     {
@@ -28,14 +28,11 @@ public class LoginUI : MonoBehaviour
 
     void OnEnable()
     {
-        // Assina os dois eventos uma única vez
         SimpleAuthenticator.AuthResponseReceived += OnAuthResponse;
         SimpleAuthenticator.ClientAuthFailed     += OnAuthFailed;
     }
-
     void OnDisable()
     {
-        // Desassina para evitar leaks
         SimpleAuthenticator.AuthResponseReceived -= OnAuthResponse;
         SimpleAuthenticator.ClientAuthFailed     -= OnAuthFailed;
     }
@@ -43,70 +40,48 @@ public class LoginUI : MonoBehaviour
     public void Connect()
     {
         if (manager == null) manager = NetworkManager.singleton;
-        if (authenticator == null)
-        {
-            ShowStatus("Authenticator não atribuído no NetworkManager.");
-            return;
-        }
+        if (authenticator == null) { ShowStatus("Authenticator não atribuído no NetworkManager."); return; }
 
         string username = GetUser();
         string password = GetPass();
         bool createIfMissing = createIfMissingToggle != null && createIfMissingToggle.isOn;
-
+        
         if (string.IsNullOrWhiteSpace(username)) { ShowStatus("Usuário vazio."); return; }
         if (string.IsNullOrWhiteSpace(password)) { ShowStatus("Senha vazia.");   return; }
 
         if (addressField != null && !string.IsNullOrWhiteSpace(addressField.text))
             manager.networkAddress = addressField.text.Trim();
 
-        // Entrega as credenciais ao Authenticator; ele envia no OnClientAuthenticate()
+        // credenciais ANTES de iniciar
         authenticator.cachedUsername = username;
         authenticator.cachedPassword = password;
         authenticator.cachedCreate   = createIfMissing;
+        authenticator.cachedCreate = true;
 
-        ShowStatus($"Conectando em {manager.networkAddress}...");
-        manager.StartClient();
-    }
-
-    // ---- Handlers de autenticação (eventos do SimpleAuthenticator) ----
-    void OnAuthResponse(SimpleAuthenticator.AuthResponse msg)
-    {
-        // Se veio bloqueio, mostra hora local
-        if (msg.code == (int)AuthCode.Locked && !string.IsNullOrEmpty(msg.lockedUntilUtc))
+        bool host = hostModeToggle != null && hostModeToggle.isOn;
+        if (host)
         {
-            DateTime utc;
-            if (DateTime.TryParse(msg.lockedUntilUtc, null, DateTimeStyles.AdjustToUniversal, out utc))
-            {
-                var local = utc.ToLocalTime();
-                ShowStatus($"Conta bloqueada até {local:HH:mm}.");
-                return;
-            }
+            ShowStatus("Iniciando Host (dev)...");
+            manager.StartHost();
         }
-
-        ShowStatus(MapAuthMessage(msg.message, msg.code));
+        else
+        {
+            ShowStatus($"Conectando em {manager.networkAddress}...");
+            manager.StartClient();
+        }
     }
 
-    void OnAuthFailed(string serverMessage)
-    {
-        ShowStatus(MapAuthMessage(serverMessage, (int)AuthCode.Error));
-    }
+    void OnAuthResponse(SimpleAuthenticator.AuthResponse msg) => ShowStatus(MapAuthMessage(msg.message));
+    void OnAuthFailed(string serverMessage) => ShowStatus(MapAuthMessage(serverMessage));
 
-    // ---- Helpers de UI ----
     string GetUser() => userFieldTMP != null ? userFieldTMP.text.Trim() : "";
     string GetPass() => passFieldTMP != null ? passFieldTMP.text        : "";
 
-    void ShowStatus(string msg)
-    {
-        if (statusText != null) statusText.text = msg;
-        Debug.Log($"[LoginUI] {msg}");
-    }
-
-    string MapAuthMessage(string serverMessage, int code)
+    void ShowStatus(string msg) { if (statusText != null) statusText.text = msg; Debug.Log($"[LoginUI] {msg}"); }
+    string MapAuthMessage(string serverMessage)
     {
         if (string.IsNullOrWhiteSpace(serverMessage)) return "Falha ao autenticar.";
-        if (code == (int)AuthCode.OK || serverMessage == "OK") return "Login realizado com sucesso.";
-        if (code == (int)AuthCode.RateLimited) return "Muitas tentativas. Aguarde um pouco e tente novamente.";
-        if (code == (int)AuthCode.Locked) return "Conta bloqueada temporariamente.";
+        if (serverMessage == "OK") return "Login realizado com sucesso.";
         if (serverMessage.Contains("Credenciais inválidas")) return "Credenciais inválidas.";
         return serverMessage;
     }
