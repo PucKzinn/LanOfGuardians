@@ -13,10 +13,16 @@ public class CreateAccountUI : MonoBehaviour
     public TMP_InputField addressFieldTMP; // opcional
 
     [Header("Opções")]
-    public Toggle hostModeToggle; // Host (dev)
+    public Toggle hostModeToggle;     // Host (dev)
+    public Toggle showPassToggle;     // Mostrar senha
 
     [Header("UI")]
     public TextMeshProUGUI statusTMP;
+    public Button createButton;
+    public Button backButton;
+    public GameObject spinner;
+
+    [Header("Navegação")]
     public LoginScreenManager screenManager; // voltar para conectar
 
     [Header("Rede")]
@@ -27,6 +33,18 @@ public class CreateAccountUI : MonoBehaviour
     {
         if (manager == null) manager = NetworkManager.singleton;
         ShowStatus("Crie sua conta.");
+
+        // Semente com último usuário (opcional)
+        string last = PlayerPrefs.GetString("last_user", "");
+        if (!string.IsNullOrWhiteSpace(last) && userField) userField.text = last;
+
+        if (showPassToggle != null)
+        {
+            showPassToggle.onValueChanged.AddListener(OnShowPassChanged);
+            OnShowPassChanged(showPassToggle.isOn);
+        }
+
+        if (spinner) spinner.SetActive(false);
     }
 
     void OnEnable()
@@ -56,10 +74,12 @@ public class CreateAccountUI : MonoBehaviour
         if (addressFieldTMP && !string.IsNullOrWhiteSpace(addressFieldTMP.text))
             manager.networkAddress = addressFieldTMP.text.Trim();
 
-        // Criar se faltar (fluxo de autenticação cria e já conecta)
+        // Criar se faltar
         authenticator.cachedUsername = user;
         authenticator.cachedPassword = pass;
         authenticator.cachedCreate   = true;
+
+        SetUIBusy(true);
 
         bool host = hostModeToggle && hostModeToggle.isOn;
         if (host)
@@ -81,11 +101,49 @@ public class CreateAccountUI : MonoBehaviour
 
     void OnAuthResponse(SimpleAuthenticator.AuthResponse msg)
     {
+        if (msg.success && userField)
+        {
+            PlayerPrefs.SetString("last_user", userField.text.Trim());
+            PlayerPrefs.Save();
+        }
         ShowStatus(MapAuthMessage(msg.message));
+        SetUIBusy(false);
     }
+
     void OnAuthFailed(string serverMessage)
     {
         ShowStatus(MapAuthMessage(serverMessage));
+        SetUIBusy(false);
+    }
+
+    void SetUIBusy(bool busy)
+    {
+        if (spinner) spinner.SetActive(busy);
+
+        if (createButton)    createButton.interactable    = !busy;
+        if (backButton)      backButton.interactable      = !busy;
+        if (userField)       userField.interactable       = !busy;
+        if (passField)       passField.interactable       = !busy;
+        if (confirmField)    confirmField.interactable    = !busy;
+        if (addressFieldTMP) addressFieldTMP.interactable = !busy;
+        if (hostModeToggle)  hostModeToggle.interactable  = !busy;
+        if (showPassToggle)  showPassToggle.interactable  = !busy;
+    }
+
+    void OnShowPassChanged(bool show)
+    {
+        if (passField != null)
+        {
+            passField.contentType = show ? TMP_InputField.ContentType.Standard
+                                         : TMP_InputField.ContentType.Password;
+            passField.ForceLabelUpdate();
+        }
+        if (confirmField != null)
+        {
+            confirmField.contentType = show ? TMP_InputField.ContentType.Standard
+                                            : TMP_InputField.ContentType.Password;
+            confirmField.ForceLabelUpdate();
+        }
     }
 
     string MapAuthMessage(string serverMessage)

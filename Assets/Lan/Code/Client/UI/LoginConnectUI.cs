@@ -12,10 +12,16 @@ public class LoginConnectUI : MonoBehaviour
     public TMP_InputField addressFieldTMP; // opcional
 
     [Header("Opções")]
-    public Toggle hostModeToggle; // Host (dev)
+    public Toggle hostModeToggle;     // Host (dev)
+    public Toggle showPassToggle;     // Mostrar senha
 
     [Header("UI")]
     public TextMeshProUGUI statusTMP;
+    public Button connectButton;
+    public Button goCreateButton;
+    public GameObject spinner;        // Ative/desative para feedback
+
+    [Header("Navegação")]
     public LoginScreenManager screenManager; // para ir para "Criar Conta"
 
     [Header("Rede")]
@@ -26,6 +32,19 @@ public class LoginConnectUI : MonoBehaviour
     {
         if (manager == null) manager = NetworkManager.singleton;
         ShowStatus("Pronto para conectar.");
+
+        // Lembrar usuário
+        string last = PlayerPrefs.GetString("last_user", "");
+        if (!string.IsNullOrWhiteSpace(last) && userField) userField.text = last;
+
+        // Mostrar/ocultar senha
+        if (showPassToggle != null)
+        {
+            showPassToggle.onValueChanged.AddListener(OnShowPassChanged);
+            OnShowPassChanged(showPassToggle.isOn); // aplica estado inicial
+        }
+
+        if (spinner) spinner.SetActive(false);
     }
 
     void OnEnable()
@@ -58,6 +77,8 @@ public class LoginConnectUI : MonoBehaviour
         authenticator.cachedPassword = pass;
         authenticator.cachedCreate   = false;
 
+        SetUIBusy(true);
+
         bool host = hostModeToggle && hostModeToggle.isOn;
         if (host)
         {
@@ -78,11 +99,41 @@ public class LoginConnectUI : MonoBehaviour
 
     void OnAuthResponse(SimpleAuthenticator.AuthResponse msg)
     {
+        // sucesso? lembra usuário
+        if (msg.success && userField)
+        {
+            PlayerPrefs.SetString("last_user", userField.text.Trim());
+            PlayerPrefs.Save();
+        }
         ShowStatus(MapAuthMessage(msg.message));
+        SetUIBusy(false);
     }
+
     void OnAuthFailed(string serverMessage)
     {
         ShowStatus(MapAuthMessage(serverMessage));
+        SetUIBusy(false);
+    }
+
+    void SetUIBusy(bool busy)
+    {
+        if (spinner) spinner.SetActive(busy);
+
+        if (connectButton)   connectButton.interactable   = !busy;
+        if (goCreateButton)  goCreateButton.interactable  = !busy;
+        if (userField)       userField.interactable       = !busy;
+        if (passField)       passField.interactable       = !busy;
+        if (addressFieldTMP) addressFieldTMP.interactable = !busy;
+        if (hostModeToggle)  hostModeToggle.interactable  = !busy;
+        if (showPassToggle)  showPassToggle.interactable  = !busy;
+    }
+
+    void OnShowPassChanged(bool show)
+    {
+        if (passField == null) return;
+        passField.contentType = show ? TMP_InputField.ContentType.Standard
+                                     : TMP_InputField.ContentType.Password;
+        passField.ForceLabelUpdate();
     }
 
     string MapAuthMessage(string serverMessage)
